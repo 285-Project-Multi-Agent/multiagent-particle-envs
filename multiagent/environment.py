@@ -35,6 +35,12 @@ class MultiAgentEnv(gym.Env):
         self.shared_reward = world.collaborative if hasattr(world, 'collaborative') else False
         self.time = 0
 
+        # CUSTOM
+        self.world.dead_agents = 0
+        self.adversaries = [i for i in range(self.n) if self.agents[i].adversary]
+        self.crewmates = [i for i in range(self.n) if not self.agents[i].adversary]
+
+
         # configure spaces
         self.action_space = []
         self.observation_space = []
@@ -88,6 +94,12 @@ class MultiAgentEnv(gym.Env):
             self._set_action(action_n[i], agent, self.action_space[i])
         # advance world state
         self.world.step()
+
+        # CUSTOM: update living status status
+        for adversary in self.adversaries:
+            for crewmate in self.crewmates:
+                if self.agents[crewmate].alive:
+                    self.update_living_status(self.agents[adversary], self.agents[crewmate])
         # record observation for each agent
         for agent in self.agents:
             obs_n.append(self._get_obs(agent))
@@ -102,6 +114,15 @@ class MultiAgentEnv(gym.Env):
             reward_n = [reward] * self.n
 
         return obs_n, reward_n, done_n, info_n
+
+    def update_living_status(self, adversary, agent):
+        delta_pos = adversary.state.p_pos - agent.state.p_pos
+        dist = np.sqrt(np.sum(np.square(delta_pos)))
+        # minimum allowable distance
+        dist_min = adversary.size + agent.size
+        if dist < dist_min:
+            agent.alive = False
+            self.world.dead_agents += 1
 
     def reset(self):
         # reset world
