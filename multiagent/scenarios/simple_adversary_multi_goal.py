@@ -15,6 +15,10 @@ class Scenario(BaseScenario):
         self.scenario_dead_agents = 0
 
         self.kill_reward = 5
+        self.num_goals = 2
+        # Need this to access in environment.py
+        world.num_goals = self.num_goals
+        self.goal_reward = 5
 
         # num_landmarks = num_agents - 1
         num_landmarks = 10
@@ -56,9 +60,13 @@ class Scenario(BaseScenario):
         # goal = np.random.choice(world.landmarks)
         # goal.color = np.array([0.15, 0.65, 0.15])
         for agent in world.agents:
-            goal = np.random.choice(world.landmarks)
-            goal.color = np.array([0.15, 0.65, 0.15])
-            agent.goal_a = goal
+            goals = np.random.choice(world.landmarks, self.num_goals)
+            agent.goals_visited = np.full(self.num_goals, False)
+            agent.goals = goals
+            for goal in goals:
+                goal.color = np.array([0.15, 0.65, 0.15])
+            # goal.color = np.array([0.15, 0.65, 0.15])
+            # agent.goal_a = goal
         # set random initial states
         for agent in world.agents:
             agent.state.p_pos = np.random.uniform(-1, +1, world.dim_p)
@@ -112,12 +120,20 @@ class Scenario(BaseScenario):
         pos_rew = 0
         good_agents = self.good_agents(world)
         if shaped_reward:  # distance-based agent reward
-            pos_rew = -min(
-                [np.sqrt(np.sum(np.square(a.state.p_pos - a.goal_a.state.p_pos))) for a in good_agents])
+            ## Changed the shared reward default to also account for multiple goals
+            ## Previously code took the negative min of distances.
+            ## Replaced with max, since calc_goal_reward already negates the distances
+            
+            pos_rew = max([self.calc_goal_reward(a) for a in good_agents])
+
+            # pos_rew = -min(
+            #     [np.sqrt(np.sum(np.square(a.state.p_pos - a.goal_a.state.p_pos))) for a in good_agents])
         else:
             if agent.alive:
                 pos_rew += self.kill_reward
-            pos_rew -= np.sqrt(np.sum(np.square(agent.state.p_pos - agent.goal_a.state.p_pos)))
+            
+            pos_rew += self.calc_goal_reward(agent)
+
             # pos_rew -= min([np.sqrt(np.sum(np.square(a.state.p_pos - a.goal_a.state.p_pos))) for a in good_agents])
         # else:  # proximity-based agent reward (binary)
         #     pos_rew = 0
@@ -129,15 +145,24 @@ class Scenario(BaseScenario):
 
         return pos_rew + adv_rew
 
+    def calc_goal_reward(self, agent):
+        rew = 0
+        for idx in range(self.num_goals):
+            # agent has visited this goal
+            if agent.goals_visited[idx]:
+                rew += self.goal_reward
+            # else, penalize agent reward based on distance to goal
+            else:
+                rew -= np.sqrt(np.sum(np.square(agent.state.p_pos - agent.goals[idx].state.p_pos)))
+        return rew
+
     def adversary_reward(self, agent, world):
         # Rewarded based on proximity to the goal landmark
 
-        '''
-        n = number of steps
-        total_reward = n * 0.15
-        '''
         shaped_reward = False
         if shaped_reward:  # distance-based reward
+            # TODO this base case will not work for multi-goal
+            # not sure why it considers adv goal dist in the first place
             return -np.sum(np.square(agent.state.p_pos - agent.goal_a.state.p_pos))
         else:
             adv_rew = 0
@@ -173,7 +198,7 @@ class Scenario(BaseScenario):
 
         if not agent.adversary:
             # return -> [v_self_goal, |v_other_agents_goal|, |v_self_other_agents|]
-            return np.concatenate([agent.goal_a.state.p_pos - agent.state.p_pos] + entity_pos + other_pos)
+            return np.concatenate([agent.g.state.p_pos - agent.state.p_pos for g in agent.goals] + entity_pos + other_pos)
         else:
             # return -> [|v_other_agents_goal|, |v_self_other_agents|]
             return np.concatenate(entity_pos + other_pos)
