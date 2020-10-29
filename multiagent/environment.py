@@ -102,12 +102,12 @@ class MultiAgentEnv(gym.Env):
             for crewmate in self.crewmates:
                 if self.agents[crewmate].alive:
                     self.update_living_status(self.agents[adversary], self.agents[crewmate])
-        
+
         # CUSTOM: update goal status only if multigoal flag is enabled
         if self.enable_multigoal:
-            for crewmate in crewmates:
+            for crewmate in self.crewmates:
                 self.update_goal_status(self.agents[crewmate])
-        
+
         # record observation for each agent
         for agent in self.agents:
             obs_n.append(self._get_obs(agent))
@@ -130,8 +130,9 @@ class MultiAgentEnv(gym.Env):
         dist_min = adversary.size + agent.size
         if dist < dist_min:
             agent.alive = False
+            agent.color = np.array([0, 0, 0])
             self.world.dead_agents += 1
-    
+
     def update_goal_status(self, agent):
         for idx in range(self.world.num_goals):
             # agent has not visited this goal
@@ -141,6 +142,7 @@ class MultiAgentEnv(gym.Env):
                 dist = np.sqrt(np.sum(np.square(delta_pos)))
                 dist_min = goal.size + agent.size
                 if dist < dist_min:
+                    agent.goal_found = True
                     agent.goals_visited[idx] = True
 
     def reset(self):
@@ -170,6 +172,8 @@ class MultiAgentEnv(gym.Env):
     # get dones for a particular agent
     # unused right now -- agents are allowed to go beyond the viewing screen
     def _get_done(self, agent):
+        if self.world.dead_agents == len(self.crewmates):
+            return True
         if self.done_callback is None:
             return False
         return self.done_callback(agent, self.world)

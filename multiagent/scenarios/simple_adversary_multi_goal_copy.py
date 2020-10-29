@@ -14,7 +14,6 @@ class Scenario(BaseScenario):
         self.num_adversaries = 1
 
         self.kill_reward = 10
-        self.persistent_reward = 0.5
         self.num_goals = 2
         # Need this to access in environment.py
         world.num_goals = self.num_goals
@@ -45,7 +44,6 @@ class Scenario(BaseScenario):
 
     def reset_world(self, world):
         self.scenario_dead_agents = 0
-        world.dead_agents = 0
         # random properties for agents
         for i in range(0, self.num_adversaries):
             world.agents[i].color = np.array([0.85, 0.35, 0.35])
@@ -62,7 +60,6 @@ class Scenario(BaseScenario):
             goals = np.random.choice(world.landmarks, self.num_goals, False)
             agent.goals_visited = np.full(self.num_goals, False)
             agent.goals = goals
-            agent.goal_found = False
             #CUSTOM reset
             agent.alive = True
             for goal in goals:
@@ -99,10 +96,7 @@ class Scenario(BaseScenario):
 
     def reward(self, agent, world):
         # Agents are rewarded based on minimum agent distance to each landmark
-        if not agent.adversary and self.scenario_dead_agents != world.dead_agents:
-            self.scenario_dead_agents = world.dead_agents
-        rew = self.adversary_reward(agent, world) if agent.adversary else self.agent_reward(agent, world)
-        return rew
+        return self.adversary_reward(agent, world) if agent.adversary else self.agent_reward(agent, world)
 
     def agent_reward(self, agent, world):
         # Rewarded based on how close any good agent is to the goal landmark, and how far the adversary is from it
@@ -135,7 +129,7 @@ class Scenario(BaseScenario):
             #     [np.sqrt(np.sum(np.square(a.state.p_pos - a.goal_a.state.p_pos))) for a in good_agents])
         else:
             if agent.alive:
-                pos_rew += self.persistent_reward
+                pos_rew += self.kill_reward
 
             pos_rew += self.calc_goal_reward(agent)
 
@@ -152,13 +146,12 @@ class Scenario(BaseScenario):
 
     def calc_goal_reward(self, agent):
         rew = 0
-        if agent.goal_found:
-            rew += self.goal_reward
-            agent.goal_found = False
         for idx in range(self.num_goals):
-            # agent has not visited this goal
-            if not agent.goals_visited[idx]:
-                # penalize agent reward based on distance to unvisited goal
+            # agent has visited this goal
+            if agent.goals_visited[idx]:
+                rew += self.goal_reward
+            # else, penalize agent reward based on distance to goal
+            else:
                 rew -= np.sqrt(np.sum(np.square(agent.state.p_pos - agent.goals[idx].state.p_pos)))
         return rew
 
@@ -173,12 +166,12 @@ class Scenario(BaseScenario):
         else:
             adv_rew = 0
             # kill reward (continuously reward adversary for dead agents)
-            adv_rew += self.kill_reward * (world.dead_agents - self.scenario_dead_agents)
+            # TODO: revisit this to try out one-time kill reward
+            adv_rew += self.kill_reward * world.dead_agents
             # distance to closest living agent
             alive_good_agents = [a for a in self.good_agents(world) if a.alive]
             if alive_good_agents:
                 adv_rew -= min([np.sqrt(np.sum(np.square(a.state.p_pos - agent.state.p_pos))) for a in alive_good_agents])
-            # print("ADVERSARY REWARD:", adv_rew)
             return adv_rew
         # else:  # proximity-based reward (binary)
         #     adv_rew = 0
