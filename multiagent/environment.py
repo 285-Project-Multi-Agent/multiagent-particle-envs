@@ -99,6 +99,8 @@ class MultiAgentEnv(gym.Env):
 
         # CUSTOM: update living status status
         for adversary in self.adversaries:
+            if self.agents[adversary].kill_cooldown > 0:
+                self.agents[adversary].kill_cooldown -= 1
             for crewmate in self.crewmates:
                 if self.agents[crewmate].alive:
                     self.update_living_status(self.agents[adversary], self.agents[crewmate])
@@ -128,7 +130,7 @@ class MultiAgentEnv(gym.Env):
         dist = np.sqrt(np.sum(np.square(delta_pos)))
         # minimum allowable distance
         dist_min = adversary.size + agent.size
-        if dist < dist_min:
+        if dist < dist_min and adversary.kill_cooldown == 0:
             agent.alive = False
             agent.color = np.array([0, 0, 0])
             self.world.dead_agents += 1
@@ -262,7 +264,7 @@ class MultiAgentEnv(gym.Env):
                 # import rendering only if we need it (and don't import for headless machines)
                 #from gym.envs.classic_control import rendering
                 from multiagent import rendering
-                self.viewers[i] = rendering.Viewer(700,700)
+                self.viewers[i] = rendering.Viewer(800,800)
 
         # create rendering geometry
         if self.render_geoms is None:
@@ -292,7 +294,7 @@ class MultiAgentEnv(gym.Env):
         for i in range(len(self.viewers)):
             from multiagent import rendering
             # update bounds to center around agent
-            cam_range = 1
+            cam_range = 10
             if self.shared_viewer:
                 pos = np.zeros(self.world.dim_p)
             else:
